@@ -1,0 +1,26 @@
+orders.parquet
+config.json
+sync_orders_all.py
+orders_temp.parquet
+trips.parquet
+orders_by_year/
+demo_data/
+user_permissions.json
+__pycache__/
+.venv/
+.env
+.demo_deps/
+
+# Public demo: keep company integrations local.
+/akeyless_sc.py
+/sync_orders.py
+/sync_orders_backfill.py
+/sync_trips.py
+
+# Local datasets, credentials, and development artifacts.
+*.parquet
+.env.*
+!.env.example
+*.py[cod]
+.ipynb_checkpoints/
+venv/
