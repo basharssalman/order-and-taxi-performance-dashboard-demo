@@ -104,7 +104,8 @@ Merchant cancellations and voids are subsets of canceled orders in the synthetic
 
 ## Dashboard capabilities
 
-- Compare independently selected current and previous periods using presets or custom date ranges.
+- Default to the latest seven available complete days versus the preceding seven days, separately for delivery and taxi data. Other presets are anchored to each dataset's latest complete day.
+- Compare independently selected current and previous periods using presets or custom date ranges. Each tab displays “Synthetic data through: [date]”.
 - Filter delivery reporting by city, merchant, channel (labeled “Vertical” in the UI), and account manager; filter taxi reporting by city.
 - Inspect delivery and taxi KPI comparisons, including whether higher or lower values are favorable for each indicator.
 - Explore hourly delivered-order trends with interactive Plotly charts.
@@ -116,11 +117,11 @@ Merchant cancellations and voids are subsets of canceled orders in the synthetic
 
 ## Synthetic demo dataset
 
-`demo_data.py` generates 731 calendar days of fictional records using `random.Random(42)`: approximately 210,000 hourly delivery aggregates and 64,000 taxi requests. Coverage ends on the generation date. The seed makes generation repeatable for the same code version and date; calendar labels move as the generation date changes.
+`demo_data.py` generates 731 calendar days of fictional records using `random.Random(42)`: approximately 210,000 hourly delivery aggregates and 64,000 taxi requests. Coverage ends on the day before generation, so the final day has a complete 24-hour profile. The seed makes generation repeatable for the same code version and date; calendar labels move as the generation date changes.
 
 Simulated patterns include weekly demand differences, gradual growth, a smooth periodic demand variation, lunch and dinner delivery peaks, and commute-oriented taxi activity. The periodic variation is illustrative rather than a calibrated annual seasonality model. Merchant-specific cancellation and unsuccessful-delivery probabilities create variation across segments. Taxi timestamps include hours, minutes, and seconds.
 
-Files are generated in the ignored `demo_data/` directory. The date/version marker triggers regeneration on the first startup of a new day or after a generator version change. An already-running server does not regenerate automatically at midnight. Monetary values are fictional demo amounts without a declared currency or conversion from company records.
+Files are generated in the ignored `demo_data/` directory. Existing generated files are reused across restarts and calendar-date changes. Generation runs when files are absent or the generator version changes; no scheduled job is required. To refresh intentionally, stop the app, remove `demo_data/`, and restart. A hosting restart that discards local files also causes regeneration. Monetary values are fictional demo amounts without a declared currency or conversion from company records.
 
 These records illustrate application behavior and metric relationships; they do not represent real business results.
 

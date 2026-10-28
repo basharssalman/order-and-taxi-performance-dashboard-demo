@@ -6,7 +6,7 @@ import random
 
 import pandas as pd
 
-DATA_VERSION = "v3"
+DATA_VERSION = "v4"
 # Relative hourly demand: delivery peaks at lunch/dinner; taxis at commute times.
 DELIVERY_HOUR_WEIGHTS = [1, 1, 0.5, 0.5, 0.5, 1, 2, 3, 4, 5, 7, 10,
                          12, 10, 7, 6, 8, 12, 16, 18, 14, 9, 5, 2]
@@ -15,17 +15,19 @@ TAXI_HOUR_WEIGHTS = [3, 2, 1, 1, 1, 2, 5, 10, 12, 8, 5, 5,
 
 
 def ensure_demo_data(directory: Path):
-    """Reuse today's dataset, regenerating daily so relative date filters work."""
+    """Generate once; reuse across restarts until removed or version changes."""
     today = date.today()
     marker = directory / "generated.txt"
-    if marker.exists() and marker.read_text() == f"{DATA_VERSION}:{today}":
+    if (marker.exists() and marker.read_text().startswith(f"{DATA_VERSION}:")
+            and (directory / "trips.parquet").exists()
+            and any((directory / "orders_by_year").glob("orders_*.parquet"))):
         return
     rng = random.Random(42)
     orders, trips = [], []
     cities = ["Harbor City", "Maple Heights", "Riverdale"]
     merchants = ["Cedar Kitchen", "Moonlight Pizza", "Orchard Market", "Sunny Cafe"]
     for offset in range(731):
-        day = today - timedelta(days=730 - offset)
+        day = today - timedelta(days=731 - offset)
         demand = (1 + offset / 1800) * (1.2 if day.weekday() >= 4 else 0.9)
         demand *= 1 + 0.12 * math.sin(offset / 30)
         for city_index, city in enumerate(cities):

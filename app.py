@@ -473,18 +473,26 @@ def normalize_selectize_value(value) -> list[str]:
     return [str(item) for item in value]
 
 
-def get_yesterday():
-    return date.today() - timedelta(days=1)
+def latest_available_date(kind="delivery"):
+    if kind == "taxi":
+        frame, _, error = load_taxi()
+        latest = frame["created_date"].max() if error is None and frame is not None and not frame.empty else None
+    else:
+        _, latest, _, error = load_order_choices()
+    if latest is None or pd.isna(latest):
+        return date.today() - timedelta(days=1)
+    # Compare complete days even if an older generated dataset includes today.
+    return min(pd.Timestamp(latest).date(), date.today() - timedelta(days=1))
 
-def get_day_before():
-    return date.today() - timedelta(days=2)
 
 DATE_PRESET_CHOICES = {
-    "today": "Today",
-    "yesterday": "Yesterday",
-    "month_to_date": "Month to Date",
+    "latest_seven_days": "Latest 7 Available Days",
+    "today": "Latest Available Day",
+    "yesterday": "Day Before Latest",
+    "month_to_date": "Latest Month to Date",
     "custom": "Custom Range",
 }
+
 
 def shift_months(source_date, months):
     month_index = source_date.month - 1 + months
@@ -494,8 +502,8 @@ def shift_months(source_date, months):
     day = min(source_date.day, last_day)
     return date(year, month, day)
 
-def resolve_preset_range(preset_key):
-    today = date.today()
+def resolve_preset_range(preset_key, kind="delivery"):
+    today = latest_available_date(kind)
     yesterday = today - timedelta(days=1)
     day_before = today - timedelta(days=2)
     last_week_same_day = today - timedelta(days=7)
@@ -503,6 +511,10 @@ def resolve_preset_range(preset_key):
     last_month_today = shift_months(today, -1)
     last_month_start = last_month_today.replace(day=1)
 
+    if preset_key == "latest_seven_days":
+        return today - timedelta(days=6), today
+    if preset_key == "previous_seven_days":
+        return today - timedelta(days=13), today - timedelta(days=7)
     if preset_key == "today":
         return today, today
     if preset_key == "day_before_yesterday":
@@ -519,19 +531,21 @@ def resolve_preset_range(preset_key):
     return yesterday, yesterday
 
 def get_default_date_ranges():
-    current_start, current_end = resolve_preset_range("yesterday")
-    previous_start, previous_end = resolve_preset_range("day_before_yesterday")
     return {
-        "date_range": (current_start, current_end),
-        "prev_date_range": (previous_start, previous_end),
-        "taxi_date_range": (current_start, current_end),
-        "taxi_prev_date_range": (previous_start, previous_end),
+        "date_range": resolve_preset_range("latest_seven_days"),
+        "prev_date_range": resolve_preset_range("previous_seven_days"),
+        "taxi_date_range": resolve_preset_range("latest_seven_days", "taxi"),
+        "taxi_prev_date_range": resolve_preset_range("previous_seven_days", "taxi"),
     }
+
+
+DEFAULT_DATE_RANGES = get_default_date_ranges()
 
 CURRENT_PRESET_CHOICES = DATE_PRESET_CHOICES
 PREVIOUS_PRESET_CHOICES = {
-    "yesterday": "Yesterday",
-    "day_before_yesterday": "Day Before Yesterday",
+    "previous_seven_days": "Preceding 7 Available Days",
+    "yesterday": "Day Before Latest",
+    "day_before_yesterday": "Two Days Before Latest",
     "last_week_same_day": "Last Week Same Day",
     "last_month_same_day": "Last Month Same Day",
     "last_month_to_date": "Last Month to Date",
@@ -546,12 +560,12 @@ app_ui = ui.page_navbar(
     ui.nav_panel("Delivery Dashboard", 
         ui.page_sidebar(
             ui.sidebar(
-                ui.input_select("date_preset", "Current Preset", CURRENT_PRESET_CHOICES, selected="yesterday"),
+                ui.input_select("date_preset", "Current Preset", CURRENT_PRESET_CHOICES, selected="latest_seven_days"),
                 ui.input_date_range("date_range", "Current Period", 
-                                    start=get_yesterday(), end=get_yesterday()),
-                ui.input_select("prev_date_preset", "Previous Preset", PREVIOUS_PRESET_CHOICES, selected="day_before_yesterday"),
+                                    start=DEFAULT_DATE_RANGES["date_range"][0], end=DEFAULT_DATE_RANGES["date_range"][1]),
+                ui.input_select("prev_date_preset", "Previous Preset", PREVIOUS_PRESET_CHOICES, selected="previous_seven_days"),
                 ui.input_date_range("prev_date_range", "Previous Period", 
-                                    start=get_day_before(), end=get_day_before()),
+                                    start=DEFAULT_DATE_RANGES["prev_date_range"][0], end=DEFAULT_DATE_RANGES["prev_date_range"][1]),
                 ui.hr(),
                 ui.h6("Filters"),
                 ui.input_selectize("filter_city", "City", choices=["All"], selected="All", multiple=True),
@@ -670,12 +684,12 @@ app_ui = ui.page_navbar(
     ui.nav_panel("Taxi Trips", 
     ui.page_sidebar(
             ui.sidebar(
-                ui.input_select("taxi_date_preset", "Current Preset", CURRENT_PRESET_CHOICES, selected="yesterday"),
+                ui.input_select("taxi_date_preset", "Current Preset", CURRENT_PRESET_CHOICES, selected="latest_seven_days"),
                 ui.input_date_range("taxi_date_range", "Current Period", 
-                                    start=get_yesterday(), end=get_yesterday()),
-                ui.input_select("taxi_prev_date_preset", "Previous Preset", PREVIOUS_PRESET_CHOICES, selected="day_before_yesterday"),
+                                    start=DEFAULT_DATE_RANGES["taxi_date_range"][0], end=DEFAULT_DATE_RANGES["taxi_date_range"][1]),
+                ui.input_select("taxi_prev_date_preset", "Previous Preset", PREVIOUS_PRESET_CHOICES, selected="previous_seven_days"),
                 ui.input_date_range("taxi_prev_date_range", "Previous Period", 
-                                    start=get_day_before(), end=get_day_before()),
+                                    start=DEFAULT_DATE_RANGES["taxi_prev_date_range"][0], end=DEFAULT_DATE_RANGES["taxi_prev_date_range"][1]),
                 ui.hr(),
                 ui.h6("Filters"),
                 ui.input_selectize("taxi_filter_city", "City", choices=["All"], selected="All", multiple=True),
@@ -799,7 +813,8 @@ def server(input, output, session):
             ui.update_date_range(input_id, start=start, end=end)
 
     def apply_preset_to_input(input_id, preset_key):
-        start_date, end_date = resolve_preset_range(preset_key)
+        kind = "taxi" if input_id.startswith("taxi_") else "delivery"
+        start_date, end_date = resolve_preset_range(preset_key, kind)
         ui.update_date_range(input_id, start=start_date, end=end_date)
 
     @reactive.effect
@@ -841,7 +856,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.date_preset)
     def _sync_delivery_preset():
-        preset_key = input.date_preset() or "yesterday"
+        preset_key = input.date_preset() or "latest_seven_days"
         if preset_key == "custom":
             return
         apply_preset_to_input("date_range", preset_key)
@@ -849,7 +864,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.prev_date_preset)
     def _sync_delivery_previous_preset():
-        preset_key = input.prev_date_preset() or "day_before_yesterday"
+        preset_key = input.prev_date_preset() or "previous_seven_days"
         if preset_key == "custom":
             return
         apply_preset_to_input("prev_date_range", preset_key)
@@ -857,7 +872,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.taxi_date_preset)
     def _sync_taxi_preset():
-        preset_key = input.taxi_date_preset() or "yesterday"
+        preset_key = input.taxi_date_preset() or "latest_seven_days"
         if preset_key == "custom":
             return
         apply_preset_to_input("taxi_date_range", preset_key)
@@ -865,7 +880,7 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.taxi_prev_date_preset)
     def _sync_taxi_previous_preset():
-        preset_key = input.taxi_prev_date_preset() or "day_before_yesterday"
+        preset_key = input.taxi_prev_date_preset() or "previous_seven_days"
         if preset_key == "custom":
             return
         apply_preset_to_input("taxi_prev_date_range", preset_key)
@@ -982,12 +997,12 @@ def server(input, output, session):
         _, latest, _, error = load_order_choices()
         if error is not None:
             return "No data"
-        return f"Last update: {latest:%B %d, %H:%M}" if latest is not None else "No data"
+        return f"Synthetic data through: {latest:%Y-%m-%d}" if latest is not None else "No data"
     
     @render.text
     def taxi_last_update():
         df =taxi_df()
-        return f"Last update: {df['created_date'].max():%B %d, %H:%M}" if df is not None and not df.empty else "No data"
+        return f"Synthetic data through: {df['created_date'].max():%Y-%m-%d}" if df is not None and not df.empty else "No data"
     
     def humanize(v):
         if pd.isna(v) or v is None: return "0"
