@@ -31,22 +31,26 @@ The trade-off is freshness and operational responsibility: reporting reflects th
 
 ## Architecture
 
-The original private integration and the runnable public demo feed the same type of analytical serving layer:
+The original deployment used an hourly cron job to refresh local analytical files. Dashboard interactions read those files rather than issuing a new PostgreSQL query. The public demo replaces extraction with synthetic data generation:
 
 ```mermaid
 flowchart LR
-    subgraph Original[Original private integration - context only]
-        PG[PostgreSQL reporting replica] --> ETL[Hourly Python extraction and transformation]
+    subgraph Original["Original private deployment — context only"]
+        CRON["Cron job<br/>Runs every hour"] -.->|triggers| EXTRACT["Python extraction<br/>SQL queries via psycopg2"]
+        PG[("PostgreSQL<br/>reporting replica")] -->|reporting records| EXTRACT
+        EXTRACT --> TRANSFORM["Pandas transformation<br/>Normalize fields and merge updates by ID"]
     end
-    subgraph Demo[Public demo - runnable]
-        GEN[Seeded synthetic data generator]
+    subgraph Demo["Public demo — runnable"]
+        GEN["Seeded synthetic data generator<br/>Runs when data is missing or version changes"]
     end
-    ETL -.-> FILES[Local Parquet datasets]
-    GEN --> FILES
-    FILES --> LOAD[Partition-aware reads and in-process caches]
-    LOAD --> APP[Shiny dashboard and Pandas calculations]
-    APP --> PLOT[Plotly visualizations and reporting tables]
+    TRANSFORM -.->|updates local files| FILES[("Local Parquet datasets<br/>Delivery: yearly partitions<br/>Taxi: separate file")]
+    GEN -->|creates demo files| FILES
+    FILES -->|selected columns and relevant years| LOAD["Data loading<br/>In-process caches"]
+    LOAD --> APP["Shiny dashboard<br/>Filters and Pandas KPI calculations"]
+    APP --> VIEW["Plotly charts<br/>KPI cards and reporting tables"]
 ```
+
+The hourly schedule belongs to the original deployment; no cron job is required for the public demo. User interactions operate on the latest prepared dataset, so reporting freshness depends on the last successful refresh rather than a database query on each action.
 
 In demo mode, startup calls `ensure_demo_data()` before loading the local datasets. It does not call the private PostgreSQL extraction stage. The public dashboard serves synthetic data without a login or live-sync controls. Its entry point refuses production mode; runtime guards also prevent the private integration scripts from running in demo mode.
 
