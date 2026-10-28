@@ -4,7 +4,7 @@ An operational analytics application built to solve slow, database-backed report
 
 **The public demo uses entirely synthetic data.** It demonstrates data modeling, file-based analytical serving, caching, and comparative reporting without company records or live database access.
 
-**Live demo:** TODO — add URL when available.  
+**Live demo:** [Open the dashboard on Posit Connect Cloud](https://01a18352-f0ac-9c8f-254e-b299968c8b35.share.connect.posit.cloud/)
 ![Delivery dashboard with synthetic-data KPIs and weekly comparisons](assets/dashboard-preview.png)
 
 ## Engineering highlights
